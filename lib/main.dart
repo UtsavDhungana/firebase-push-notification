@@ -6,34 +6,69 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:notification_app/getFcm.dart';
-
-const AndroidNotificationChannel channel = AndroidNotificationChannel(
-  'high_importance_channel', //id,
-  'High Importance Notifications', //title
-  description:
-      'This channel is used for important notifications.', //description
-  importance: Importance.high,
-  playSound: true,
-);
-
-final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
-    FlutterLocalNotificationsPlugin();
-
-Future<void> _firebaseMessagingBankgroundHandler(RemoteMessage message) async {
-  log('here');
-  await Firebase.initializeApp();
-}
+import 'package:notification_app/second_screen.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp();
+
   FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBankgroundHandler);
+  // final RemoteMessage? _message =
+  //     await FirebaseMessaging.instance.getInitialMessage();
+
+  runApp(const MyApp());
+}
+
+Future _showNotification(RemoteMessage message) async {
+  const AndroidNotificationChannel channel = AndroidNotificationChannel(
+    'high_importance_channel', //id,
+    'High Importance Notifications', //title
+    description:
+        'This channel is used for important notifications.', //description
+    importance: Importance.max,
+    playSound: true,
+  );
 
   await flutterLocalNotificationsPlugin
       .resolvePlatformSpecificImplementation<
           AndroidFlutterLocalNotificationsPlugin>()
       ?.createNotificationChannel(channel);
-  runApp(const MyApp());
+
+  log(message.toString());
+  RemoteNotification? notification = message.notification;
+  AndroidNotification? android = message.notification?.android;
+  Map<String, dynamic> dataValue = message.data;
+  if (notification != null) {
+    String screen = dataValue['screen'].toString();
+    log('Data: ${message.data.toString()}');
+    flutterLocalNotificationsPlugin.show(
+      notification.hashCode,
+      notification.title,
+      notification.body,
+      NotificationDetails(
+        android: AndroidNotificationDetails(
+          channel.id,
+          channel.name,
+          channelDescription: channel.description,
+          color: Colors.blue,
+          playSound: true,
+          icon: '@mipmap/marvel_notification_icon',
+        ),
+      ),
+      payload: screen,
+    );
+  } else {
+    log('IN Else');
+  }
+}
+
+final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
+    FlutterLocalNotificationsPlugin();
+
+Future<void> _firebaseMessagingBankgroundHandler(RemoteMessage message) async {
+  await Firebase.initializeApp();
+  //this might be the reason i am getting two notification every time.
+  // return _showNotification(message);
 }
 
 class MyApp extends StatelessWidget {
@@ -65,10 +100,83 @@ class MyHomePage extends StatefulWidget {
 class _MyHomePageState extends State<MyHomePage> {
   int _counter = 0;
 
-  void getNotificationPermission() async {
-    FirebaseMessaging messaging = FirebaseMessaging.instance;
+  final FirebaseMessaging _firebaseMessaging = FirebaseMessaging.instance;
 
-    NotificationSettings settings = await messaging.requestPermission(
+  @override
+  void initState() {
+    super.initState();
+    getNotificationPermission();
+    getToken();
+
+    handleMessageOnBackground();
+
+    var initializationSettingsAndroid =
+        const AndroidInitializationSettings('@mipmap/marvel_notification_icon');
+
+    final InitializationSettings initializationSettings =
+        InitializationSettings(
+      android: initializationSettingsAndroid,
+    );
+
+    flutterLocalNotificationsPlugin.initialize(
+      initializationSettings,
+      onDidReceiveNotificationResponse: onNotificationTap,
+      // onDidReceiveBackgroundNotificationResponse: onBackGroundNotificationTap,
+    );
+
+    // final getOnTapBackground =
+    //     flutterLocalNotificationsPlugin.getNotificationAppLaunchDetails();
+
+    // log('on Background App tap: ${getOnTapBackground}');
+
+    FirebaseMessaging.onMessage.listen((RemoteMessage message) {
+      log('listening to message');
+      _showNotification(message);
+    });
+
+    //when app is in background but not terminated.
+    FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
+      log('on Message Opened App');
+      RemoteNotification? notification = message.notification;
+
+      if (notification != null) {
+        log('opened onmessageopen: ${message.data}');
+        if (message.data['screen'] == 'secondScreen') {
+          Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (context) => const SecondScreen(),
+            ),
+          );
+        } else {
+          log('in onMessageOpenedApp else section');
+        }
+      }
+    });
+  }
+
+  void handleMessageOnBackground() {
+    FirebaseMessaging.instance.getInitialMessage().then(
+      (remoteMessage) {
+        log('on handleMessageOnBackground');
+        if (remoteMessage != null) {
+          if (remoteMessage.data['screen'] == 'secondScreen') {
+            Future.delayed(const Duration(milliseconds: 1000), () async {
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (context) => const SecondScreen(),
+                ),
+              );
+            });
+          } else {
+            log('in onMessageOpenedApp else section');
+          }
+        }
+      },
+    );
+  }
+
+  void getNotificationPermission() async {
+    NotificationSettings settings = await _firebaseMessaging.requestPermission(
       alert: true,
       announcement: false,
       badge: true,
@@ -79,83 +187,55 @@ class _MyHomePageState extends State<MyHomePage> {
     );
     log('User granted permission: ${settings.authorizationStatus}');
 
-    await FirebaseMessaging.instance.getToken();
-
-    FirebaseMessaging.onMessage.listen((RemoteMessage message) {
-      log('listening to message');
-      log(message.toString());
-      RemoteNotification? notification = message.notification;
-      AndroidNotification? android = message.notification?.android;
-      if (notification != null && android != null) {
-        flutterLocalNotificationsPlugin.show(
-          notification.hashCode,
-          notification.title,
-          notification.body,
-          NotificationDetails(
-            android: AndroidNotificationDetails(
-              channel.id,
-              channel.name,
-              channelDescription: channel.description,
-              color: Colors.blue,
-              playSound: true,
-              icon: '@mipmap/marvel_notification_icon',
-            ),
-          ),
-        );
-      }
-    });
+    await FirebaseMessaging.instance
+        .setForegroundNotificationPresentationOptions(
+      alert: true,
+      badge: true,
+      sound: true,
+    );
   }
 
-  @override
-  void initState() {
-    super.initState();
-    log('before listening');
-    getNotificationPermission();
+  getToken() async {
+    await FirebaseMessaging.instance.getToken();
+  }
 
-    FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
-      log('on Message Opened App');
-      RemoteNotification? notification = message.notification;
-      AndroidNotification? android = message.notification?.android;
+  Future<dynamic> onNotificationTap(NotificationResponse response) async {
+    log('On Notification Tap: ${response.payload}');
+    if (response.payload == 'secondScreen') {
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (context) => const SecondScreen(),
+        ),
+      );
+    } else {
+      log('in On tap else');
+    }
+  }
 
-      if (notification != null && android != null) {
-        showDialog(
-          context: context,
-          builder: (_) {
-            return AlertDialog(
-              title: Text(notification.title!),
-              content: SingleChildScrollView(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(notification.body!),
-                  ],
-                ),
-              ),
-            );
-          },
-        );
-      }
-    });
+  @pragma('vm:entry-point')
+  Future<dynamic> onBackGroundNotificationTap(
+      NotificationResponse response) async {
+    log('On Notification Tap: ${response.payload}');
+    if (response.payload == 'secondScreen') {
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (context) => const SecondScreen(),
+        ),
+      );
+    } else {
+      log('in On tap else');
+    }
   }
 
   void showNotification() async {
     setState(() {
       _counter++;
     });
-    String? fcmKey = await getFcmToken();
-    log(fcmKey!);
-    flutterLocalNotificationsPlugin.show(
-      0,
-      'Texting $_counter',
-      'Notifying the user.',
-      NotificationDetails(
-        android: AndroidNotificationDetails(
-          channel.id,
-          channel.name,
-          channelDescription: channel.description,
-          color: Colors.blue,
-          playSound: true,
-          icon: '@mipmap/ic_launcher',
+    _showNotification(
+      RemoteMessage(
+        notification: RemoteNotification(
+          title: 'Texting $_counter',
+          body: 'Notifying the user.',
         ),
       ),
     );
