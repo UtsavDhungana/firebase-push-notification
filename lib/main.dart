@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:developer';
 import 'dart:ffi';
 
@@ -5,16 +6,16 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:http/http.dart';
 import 'package:notification_app/getFcm.dart';
 import 'package:notification_app/second_screen.dart';
+import 'package:http/http.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp();
 
   FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBankgroundHandler);
-  // final RemoteMessage? _message =
-  //     await FirebaseMessaging.instance.getInitialMessage();
 
   runApp(const MyApp());
 }
@@ -38,9 +39,26 @@ Future _showNotification(RemoteMessage message) async {
   RemoteNotification? notification = message.notification;
   AndroidNotification? android = message.notification?.android;
   Map<String, dynamic> dataValue = message.data;
+  BigPictureStyleInformation? bigPictureStyleInformation;
+  AndroidBitmap<Object>? largeIcon;
   if (notification != null) {
     String screen = dataValue['screen'].toString();
     log('Data: ${message.data.toString()}');
+    log('Image URL: ${message.notification?.android?.imageUrl.toString()}');
+    if (android != null && android.imageUrl != null) {
+      Response response = await get(
+        Uri.parse(message.notification!.android!.imageUrl.toString()),
+      );
+      bigPictureStyleInformation = BigPictureStyleInformation(
+        ByteArrayAndroidBitmap.fromBase64String(
+          base64Encode(response.bodyBytes),
+        ),
+      );
+      largeIcon = ByteArrayAndroidBitmap.fromBase64String(
+        base64Encode(response.bodyBytes),
+      );
+    }
+
     flutterLocalNotificationsPlugin.show(
       notification.hashCode,
       notification.title,
@@ -53,6 +71,8 @@ Future _showNotification(RemoteMessage message) async {
           color: Colors.blue,
           playSound: true,
           icon: '@mipmap/marvel_notification_icon',
+          largeIcon: largeIcon,
+          styleInformation: bigPictureStyleInformation,
         ),
       ),
       payload: screen,
@@ -67,12 +87,11 @@ final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
 
 Future<void> _firebaseMessagingBankgroundHandler(RemoteMessage message) async {
   await Firebase.initializeApp();
-  //this might be the reason i am getting two notification every time.
-  // return _showNotification(message);
 }
 
 class MyApp extends StatelessWidget {
-  const MyApp({Key? key}) : super(key: key);
+  final Widget? screen;
+  const MyApp({this.screen, Key? key}) : super(key: key);
 
   // This widget is the root of your application.
   @override
@@ -83,7 +102,7 @@ class MyApp extends StatelessWidget {
       theme: ThemeData(
         primarySwatch: Colors.blue,
       ),
-      home: const MyHomePage(title: 'Flutter Demo Home Page'),
+      home: screen ?? const MyHomePage(title: 'Flutter Demo Home Page'),
     );
   }
 }
@@ -121,13 +140,7 @@ class _MyHomePageState extends State<MyHomePage> {
     flutterLocalNotificationsPlugin.initialize(
       initializationSettings,
       onDidReceiveNotificationResponse: onNotificationTap,
-      // onDidReceiveBackgroundNotificationResponse: onBackGroundNotificationTap,
     );
-
-    // final getOnTapBackground =
-    //     flutterLocalNotificationsPlugin.getNotificationAppLaunchDetails();
-
-    // log('on Background App tap: ${getOnTapBackground}');
 
     FirebaseMessaging.onMessage.listen((RemoteMessage message) {
       log('listening to message');
