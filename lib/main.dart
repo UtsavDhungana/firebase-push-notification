@@ -64,7 +64,7 @@ class _MyHomePageState extends State<MyHomePage> {
   }
 
   void listenToNotificationStream() =>
-      notificationService.behaviorSubject.listen((payload) {
+      notificationService.myStream.stream.listen((payload) {
         log('listenToNotificationStream function');
         Navigator.of(context).push(
           MaterialPageRoute(

@@ -5,18 +5,17 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:http/http.dart';
-
-import 'package:rxdart/rxdart.dart';
+import 'package:notification_app/services/my_stream.dart';
 
 class NotificationService {
   NotificationService();
 
   final _flutterLocalNotificationsPlugin = FlutterLocalNotificationsPlugin();
-  final BehaviorSubject<String> behaviorSubject = BehaviorSubject();
+  final myStream = MyStream();
+
   final FirebaseMessaging _firebaseMessaging = FirebaseMessaging.instance;
 
   Future<void> initializePlatformNotifications() async {
-    log('hereeeeeeeeeee');
     getNotificationPermission();
     getToken();
 
@@ -46,44 +45,25 @@ class NotificationService {
     );
 
     FirebaseMessaging.onMessage.listen((RemoteMessage message) {
-      log('listening to message');
       _showNotification(message);
     });
 
     //when app is in background but not terminated.
     FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
-      log('on Message Opened App');
       RemoteNotification? notification = message.notification;
 
       if (notification != null) {
-        log('opened onmessageopen: ${message.data}');
         if (message.data['screen'] == 'secondScreen') {
-          behaviorSubject.add(message.data['screen']);
-          // Navigator.of(context).push(
-          //   MaterialPageRoute(
-          //     builder: (context) => const SecondScreen(),
-          //   ),
-          // );
-        } else {
-          log('in onMessageOpenedApp else section');
-        }
+          myStream.addString(message.data['screen']);
+        } else {}
       }
     });
   }
 
   Future<dynamic> onNotificationTap(NotificationResponse response) async {
-    log('On Notification Tap: ${response.payload}');
     if (response.payload == 'secondScreen') {
-      behaviorSubject.add(response.payload!);
-      // runApp(const MyApp(screen: SecondScreen()));
-      // Navigator.of(context).push(
-      //   MaterialPageRoute(
-      //     builder: (context) => const SecondScreen(),
-      //   ),
-      // );
-    } else {
-      log('in On tap else');
-    }
+      myStream.addString(response.payload!);
+    } else {}
   }
 
   void onDidReceiveLocalNotification(
@@ -105,7 +85,6 @@ class NotificationService {
       provisional: false,
       sound: true,
     );
-    log('User granted permission: ${settings.authorizationStatus}');
 
     await FirebaseMessaging.instance
         .setForegroundNotificationPresentationOptions(
@@ -117,7 +96,6 @@ class NotificationService {
 
   getToken() async {
     String? token = await FirebaseMessaging.instance.getToken();
-    log(token!);
     return token;
   }
 
@@ -149,7 +127,6 @@ class NotificationService {
             AndroidFlutterLocalNotificationsPlugin>()
         ?.createNotificationChannel(androidPlatformChannelSpecifics);
 
-    log(message.toString());
     RemoteNotification? notification = message.notification;
     AndroidNotification? android = message.notification?.android;
     Map<String, dynamic> dataValue = message.data;
@@ -191,28 +168,19 @@ class NotificationService {
         ),
         payload: screen,
       );
-    } else {
-      log('IN Else');
-    }
+    } else {}
   }
 
   void handleMessageOnBackground() {
     FirebaseMessaging.instance.getInitialMessage().then(
       (remoteMessage) {
-        log('on handleMessageOnBackground');
         if (remoteMessage != null) {
           if (remoteMessage.data['screen'] == 'secondScreen') {
             Future.delayed(const Duration(milliseconds: 1000), () async {
-              behaviorSubject.add(remoteMessage.data['screen']);
-              // Navigator.of(context).push(
-              //   MaterialPageRoute(
-              //     builder: (context) => const SecondScreen(),
-              //   ),
-              // );
+              // behaviorSubject.add(remoteMessage.data['screen']);
+              myStream.addString(remoteMessage.data['screen']);
             });
-          } else {
-            log('in onMessageOpenedApp else section');
-          }
+          } else {}
         }
       },
     );
